@@ -45,10 +45,17 @@ Kafka Broker Heap Memory 설정 +
 ```
 export KAFKA_HEAP_OPTS="-Xmx400m -Xms400m"
 echo $KAFKA_HEAP_OPTS
-echo 'export KAFKA_HEAP_OPTS='$KAFKA_HEAP_OPTS | tee -a $HOME/.bashrc
+echo 'export KAFKA_HEAP_OPTS="'$KAFKA_HEAP_OPTS'"' | tee -a $HOME/.bashrc
 ```
 
-기본값: -Xmx1G -Xms1G +
+$HOME/.bashrc 확인
+```
+$ cat $HOME/.bashrc
+...
+export KAFKA_HEAP_OPTS="-Xmx400m -Xms400m"
+```
+
+Kafka Broker Heap Memory 기본값: -Xmx1G -Xms1G +
 bin/kafka-server-start.sh
 ```
 ...
@@ -765,3 +772,315 @@ partition: verify-test-0        low_watermark: 10
 
 CAUTION: 토픽의 특정 레코드 하나만 삭제되는 것이 아니라 파티션에 존재하는 가장 오래된 오프셋부터 지정한 오프셋까지 삭제된다. +
 카프카에서는 토픽의 파티션에 저장된 특정 데이터만 삭제할 수는 없다는 점을 명심해야 한다.
+
+### 개인실습 - Local에 클러스터(Cluster) 구성
+
+* link:https://epicdevs.com/20[참고1 - zookeeper cluster]
+* link:https://twofootdog.tistory.com/89[참고2 - zookeeper cluster]
+* link:https://namsick96.github.io/kafka/Kafka_Cluster/[참고3 - Kafka cluster]
+* link:https://skysoo1111.tistory.com/75[참고4 - kafka test command]
+
+#### Zookeeper 클러스터 구축
+
+Zookeeper 버전 3.6.3
+
+. /tmp/zk1, /tmp/zk2, /tmp/zk3 폴더 생성 +
++
+```
+mkdir -p /tmp/zk1
+mkdir -p /tmp/zk2
+mkdir -p /tmp/zk3
+```
+. 각 폴더에 'myid'파일을 생성하고 각 내용을 1,2,3으로 생성 +
+Zookeeper 서버 번호를 myid 파일을 통해서 통보
++
+./tmp/zk1/myid
+```
+1
+```
++
+./tmp/zk2/myid
+```
+2
+```
++
+./tmp/zk3/myid
+```
+3
+```
+. bin/zk1.properties, bin/zk2.properties, bin/zk3.properties 파일을 아래와 같이 생성+
++
+.$KAFKA_HOME/bin/zk1.properties
+```
+tickTime=2000
+initLimit=10
+syncLimit=5
+dataDir=/tmp/zk1
+clientPort=2181
+server.1=127.0.0.1:2888:3888
+server.2=127.0.0.1:2889:3889
+server.3=127.0.0.1:2890:3890
+```
++
+.$KAFKA_HOME/bin/zk2.properties
+```
+tickTime=2000
+initLimit=10
+syncLimit=5
+dataDir=/tmp/zk2
+clientPort=2182
+server.1=127.0.0.1:2888:3888
+server.2=127.0.0.1:2889:3889
+server.3=127.0.0.1:2890:3890
+```
++
+.$KAFKA_HOME/bin/zk3.properties
+```
+tickTime=2000
+initLimit=10
+syncLimit=5
+dataDir=/tmp/zk3
+clientPort=2183
+server.1=127.0.0.1:2888:3888
+server.2=127.0.0.1:2889:3889
+server.3=127.0.0.1:2890:3890
+```
+. '$KAFKA_HOME'에서 Zookeeper 실행 +
++
+```
+bin/zookeeper-server-start.sh -daemon config/zk1.properties
+bin/zookeeper-server-start.sh -daemon config/zk2.properties
+bin/zookeeper-server-start.sh -daemon config/zk3.properties
+```
+
+[NOTE]
+====
+**Configuration**
+
+- tickTime : 주키퍼가 사용하는 시간에 대한 기본 측정 단위(밀리초)
+- initLimit : 팔로워가 리더와 초기에 연결하는 시간에 대한 타임아웃 tick의 수
+- syncLimit : 팔로워가 리더와 동기화 하는 시간에 대한 타임아웃 tick의 수(주키퍼에 저장된 데이터가 크면 더 크게 잡아야 함)
+- dataDir : 주키퍼의 트랜잭션 로그와 스냅샷이 저장되는 저장경로.
+- clientPort : 주키퍼 포트
+- server.x : 주키퍼 앙상블 구성을 위한 서버 설정. server.myid 형식으로 사용. 기본 포트는 2888:3888.
+첫 번째 port는 follower가 leader에 접속하기 위해서 사용. 두 번째 port는 리더 선출을 위해서 사용
+====
+
+#### Kafka 클러스터 구축
+
+. 'KAFKA_HEAP_OPTS' 환경 변수에 HEAP 메모리 설정 및 .bashrc에 추가 +
++
+```
+export KAFKA_HEAP_OPTS="-Xmx400m -Xms400m"
+echo 'export KAFKA_HEAP_OPTS="'$KAFKA_HEAP_OPTS'"' | tee -a $HOME/.bashrc
+```
+. config/server.properties 를 config/server1.properties, config/server2.properties, config/server3.properties 로 복사 후.
+각 파일의 아래부분을 수정
++
+.config/server1.properties
+```
+borker.id=1
+listeners=PLAINTEXT://localhost:9092
+advertised.listeners=PLAINTEXT://127.0.0.1:9092
+log.dirs=/tmp/kafka-1-logs
+zookeeper.connect=127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183/test-kafka
+```
++
+.config/server2.properties
+```
+borker.id=2
+listeners=PLAINTEXT://localhost:9093
+advertised.listeners=PLAINTEXT://127.0.0.1:9093
+log.dirs=/tmp/kafka-2-logs
+zookeeper.connect=127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183/test-kafka
+```
++
+.config/server3.properties
+```
+borker.id=3
+listeners=PLAINTEXT://localhost:9094
+advertised.listeners=PLAINTEXT://127.0.0.1:9094
+log.dirs=/tmp/kafka-3-logs
+zookeeper.connect=127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183/test-kafka
+```
+. Kafka 실행
++
+```
+./bin/kafka-server-start.sh -daemon ./config/server1.properties
+./bin/kafka-server-start.sh -daemon ./config/server2.properties
+./bin/kafka-server-start.sh -daemon ./config/server3.properties
+```
+
+#### 클러스터 테스트
+Topic(test) 생성
+```
+$ bin/kafka-topics.sh --create --bootstrap-server localhost:9092,localhost:9093,localhost:9094 --replication-factor 3 --partitions 1 --topic test
+Created topic test.
+```
+
+Topic 조회
+```
+$ bin/kafka-topics.sh --list --bootstrap-server localhost:9092,localhost:9093,localhost:9094
+test
+```
+
+Topic 상세조회
+```
+$ bin/kafka-topics.sh --describe --topic test --bootstrap-server localhost:9092,localhost:9093,localhost:9094
+Topic: test     TopicId: n3nYAgNIQ8aIcxrMbcn24A PartitionCount: 1       ReplicationFactor: 3    Configs: segment.bytes=1073741824
+        Topic: test     Partition: 0    Leader: 2       Replicas: 2,3,1 Isr: 2,3,1
+```
+
+Partition 1 -> 4 수정
+```
+$ bin/kafka-topics.sh --bootstrap-server localhost:9092,localhost:9093,localhost:9094 \
+  --topic test \
+  --alter \
+  --partitions 4
+```
+
+Topic 상세조회
+```
+$ bin/kafka-topics.sh --describe --topic test --bootstrap-server localhost:9092,localhost:9093,localhost:9094
+Topic: test     TopicId: n3nYAgNIQ8aIcxrMbcn24A PartitionCount: 4       ReplicationFactor: 3    Configs: segment.bytes=1073741824
+        Topic: test     Partition: 0    Leader: 2       Replicas: 2,3,1 Isr: 2,3,1
+        Topic: test     Partition: 1    Leader: 3       Replicas: 3,2,1 Isr: 3,2,1
+        Topic: test     Partition: 2    Leader: 1       Replicas: 1,3,2 Isr: 1,3,2
+        Topic: test     Partition: 3    Leader: 2       Replicas: 2,3,1 Isr: 2,3,1
+```
+
+Produce Messages
+```
+$ bin/kafka-verifiable-producer.sh --bootstrap-server localhost:9092,localhost:9093,localhost:9094 \
+  --max-messages 10 \
+  --topic test
+{"timestamp":1647887422673,"name":"startup_complete"}
+{"timestamp":1647887423130,"name":"producer_send_success","key":null,"value":"0","offset":0,"topic":"test","partition":1}
+{"timestamp":1647887423133,"name":"producer_send_success","key":null,"value":"1","offset":1,"topic":"test","partition":1}
+{"timestamp":1647887423133,"name":"producer_send_success","key":null,"value":"2","offset":2,"topic":"test","partition":1}
+{"timestamp":1647887423133,"name":"producer_send_success","key":null,"value":"3","offset":3,"topic":"test","partition":1}
+{"timestamp":1647887423133,"name":"producer_send_success","key":null,"value":"4","offset":4,"topic":"test","partition":1}
+{"timestamp":1647887423134,"name":"producer_send_success","key":null,"value":"5","offset":5,"topic":"test","partition":1}
+{"timestamp":1647887423134,"name":"producer_send_success","key":null,"value":"6","offset":6,"topic":"test","partition":1}
+{"timestamp":1647887423134,"name":"producer_send_success","key":null,"value":"7","offset":7,"topic":"test","partition":1}
+{"timestamp":1647887423134,"name":"producer_send_success","key":null,"value":"8","offset":8,"topic":"test","partition":1}
+{"timestamp":1647887423134,"name":"producer_send_success","key":null,"value":"9","offset":9,"topic":"test","partition":1}
+{"timestamp":1647887423143,"name":"shutdown_complete"}
+{"timestamp":1647887423144,"name":"tool_data","sent":10,"acked":10,"target_throughput":-1,"avg_throughput":21.09704641350211}
+```
+
+Consume Messages
+```
+$ bin/kafka-verifiable-consumer.sh --bootstrap-server localhost:9092,localhost:9093,localhost:9094 \
+  --topic test \
+  --group-id test-group
+{"timestamp":1647887503349,"name":"startup_complete"}
+{"timestamp":1647887504576,"name":"partitions_assigned","partitions":[{"topic":"test","partition":1},{"topic":"test","partition":0},{"topic":"test","partition":3},{"topic":"test","partition":2}]}
+{"timestamp":1647887504683,"name":"records_consumed","count":10,"partitions":[{"topic":"test","partition":1,"count":10,"minOffset":0,"maxOffset":9}]}
+{"timestamp":1647887504702,"name":"offsets_committed","offsets":[{"topic":"test","partition":1,"offset":10}],"success":true}
+```
+
+```
+$ bin/kafka-console-consumer.sh --bootstrap-server localhost:9092,localhost:9093,localhost:9094 \
+opic tes>   --topic test \
+>   --property print.key=true \
+>   --property key.separator=":" \
+>   --group test-group2 \
+>   --from-beginning
+null:0
+null:1
+null:2
+null:3
+null:4
+null:5
+null:6
+null:7
+null:8
+null:9
+```
+
+
+
+##### Clustered(Multi-server) Setup
+link:https://zookeeper.apache.org/doc/r3.6.3/zookeeperAdmin.html[ZooKeeper Administrator's Guide 3.5.8] +
+link:https://zookeeper.apache.org/doc/r3.6.3/zookeeperAdmin.html#sc_zkMulitServerSetup[Clustered(Multi-server) Setup]
+
+For reliable ZooKeeper service, you should deploy ZooKeeper in a cluster known as an ensemble. As long as a majority of the ensemble are up, the service will be available. Because Zookeeper requires a majority, it is best to use an odd number of machines. For example, with four machines ZooKeeper can only handle the failure of a single machine; if two machines fail, the remaining two machines do not constitute a majority. However, with five machines ZooKeeper can handle the failure of two machines.
+
+[NOTE]
+====
+As mentioned in the ZooKeeper Getting Started Guide , a minimum of three servers are required for a fault tolerant clustered setup, and it is strongly recommended that you have an odd number of servers.
+
+Usually three servers is more than enough for a production install, but for maximum reliability during maintenance, you may wish to install five servers. With three servers, if you perform maintenance on one of them, you are vulnerable to a failure on one of the other two servers during that maintenance. If you have five of them running, you can take one down for maintenance, and know that you're still OK if one of the other four suddenly fails.
+
+Your redundancy considerations should include all aspects of your environment. If you have three ZooKeeper servers, but their network cables are all plugged into the same network switch, then the failure of that switch will take down your entire ensemble.
+====
+
+Here are the steps to setting a server that will be part of an ensemble. These steps should be performed on every host in the ensemble:
+
+. Install the Java JDK. You can use the native packaging system for your system, or download the JDK from: http://java.sun.com/javase/downloads/index.jsp
+. Set the Java heap size. This is very important to avoid swapping, which will seriously degrade ZooKeeper performance. To determine the correct value, use load tests, and make sure you are well below the usage limit that would cause you to swap. Be conservative - use a maximum heap size of 3GB for a 4GB machine.
+. Install the ZooKeeper Server Package. It can be downloaded from: http://zookeeper.apache.org/releases.html
+. Create a configuration file. This file can be called anything. Use the following settings as a starting point: +
++
+```
+tickTime=2000
+dataDir=/var/lib/zookeeper/
+clientPort=2181
+initLimit=5
+syncLimit=2
+server.1=zoo1:2888:3888
+server.2=zoo2:2888:3888
+server.3=zoo3:2888:3888
+```
++
+You can find the meanings of these and other configuration settings in the section link:https://zookeeper.apache.org/doc/r3.5.8/zookeeperAdmin.html#sc_configuration[Configuration Parameters].
+A word though about a few here: Every machine that is part of the ZooKeeper ensemble should know about every other machine in the ensemble.
+You accomplish this with the series of lines of the form **server.id=host:port:port**.
+The parameters **host** and **port** are straightforward.
+You attribute the server id to each machine by creating a file named myid, one for each server, which resides in that server's data directory, as specified by the configuration file parameter **dataDir**.
+. The myid file consists of a single line containing only the text of that machine's id.
+So myid of server 1 would contain the text "1" and nothing else.
+The id must be unique within the ensemble and should have a value between 1 and 255.
+**IMPORTANT**: if you enable extended features such as TTL Nodes (see below) the id must be between 1 and 254 due to internal limitations.
+. If your configuration file is set up, you can start a ZooKeeper server: +
++
+```
+$ java -cp zookeeper.jar:lib/*:conf org.apache.zookeeper.server.quorum.QuorumPeerMain zoo.conf
+```
+
+QuorumPeerMain starts a ZooKeeper server, link:http://java.sun.com/javase/technologies/core/mntr-mgmt/javamanagement/[JMX] management beans are also registered which allows management through a JMX management console.
+The link:https://zookeeper.apache.org/doc/r3.5.8/zookeeperJMX.html[ZooKeeper JMX document] contains details on managing ZooKeeper with JMX.
+See the script bin/zkServer.sh, which is included in the release, for an example of starting server instances.
+
+. Test your deployment by connecting to the hosts: In Java, you can run the following command to execute simple operations: +
++
+```
+$ bin/zkCli.sh -server 127.0.0.1:2181
+```
+
+##### Configuration Parameters
+
+**Minimum Configuration**
+
+* **clientPort** : the port to listen for client connections; that is, the port that clients attempt to connect to.
+* **secureClientPort** : the port to listen on for secure client connections using SSL. clientPort specifies the port for plaintext connections while secureClientPort specifies the port for SSL connections. Specifying both enables mixed-mode while omitting either will disable that mode. Note that SSL feature will be enabled when user plugs-in zookeeper.serverCnxnFactory, zookeeper.clientCnxnSocket as Netty.
+* **dataDir** : the location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. +
++
+[NOTE]
+====
+Be careful where you put the transaction log. A dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely effect performance.
+====
+* **tickTime** : the length of a single tick, which is the basic time unit used by ZooKeeper, as measured in milliseconds. It is used to regulate heartbeats, and timeouts. For example, the minimum session timeout will be two ticks.
+
+**Advanced Configuration**
+
+* **initLimit** : (No Java system property) Amount of time, in ticks (see tickTime), to allow followers to connect and sync to a leader. Increased this value as needed, if the amount of data managed by ZooKeeper is large.
+* **syncLimit** : (No Java system property) Amount of time, in ticks (see tickTime), to allow followers to sync with ZooKeeper. If followers fall too far behind a leader, they will be dropped.
+* **server.x**=[hostname]:nnnnn[:nnnnn], etc : (No Java system property) servers making up the ZooKeeper ensemble.
+When the server starts up, it determines which server it is by looking for the file myid in the data directory.
+That file contains the server number, in ASCII, and it should match **x** in **server.x** in the left hand side of this setting.
+The list of servers that make up ZooKeeper servers that is used by the clients must match the list of ZooKeeper servers that each ZooKeeper server has.
+There are two port numbers **nnnnn**.
+The first followers use to connect to the leader, and the second is for leader election.
+If you want to test multiple servers on a single machine, then different ports can be used for each server.
