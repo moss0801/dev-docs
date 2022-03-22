@@ -40,6 +40,13 @@ tar xvf kafka_2.13-3.1.0.tgz
 cd kafka_2.13-3.1.0
 ```
 
+추후 편의를 위해서 KAFKA_HOME 설정
+```
+export KAFKA_HOME=${PWD}
+echo $KAFKA_HOME
+echo 'export KAFKA_HOME="'$KAFKA_HOME'"' | tee -a $HOME/.bashrc
+```
+
 Kafka Broker Heap Memory 설정 +
 재실행 시에도 적용되도록 .bashrc에 추가
 ```
@@ -862,7 +869,7 @@ bin/zookeeper-server-start.sh -daemon config/zk3.properties
 - syncLimit : 팔로워가 리더와 동기화 하는 시간에 대한 타임아웃 tick의 수(주키퍼에 저장된 데이터가 크면 더 크게 잡아야 함)
 - dataDir : 주키퍼의 트랜잭션 로그와 스냅샷이 저장되는 저장경로.
 - clientPort : 주키퍼 포트
-- server.x : 주키퍼 앙상블 구성을 위한 서버 설정. server.myid 형식으로 사용. 기본 포트는 2888:3888.
+- server.x : 주키퍼 앙상블 구성을 위한 서버 설정. server.myid 형식으로 사용. 기본 포트는 2888:3888. +
 첫 번째 port는 follower가 leader에 접속하기 위해서 사용. 두 번째 port는 리더 선출을 위해서 사용
 ====
 
@@ -999,7 +1006,42 @@ null:8
 null:9
 ```
 
+#### 일괄 실행
+일괄 실행을 위한 $KAFKA_HOME에 start.sh 생성
 
+.start.sh
+```
+#!/bin/bash
+
+echo "zk1"
+./bin/zookeeper-server-start.sh -daemon ./config/zk1.properties
+echo "zk2"
+./bin/zookeeper-server-start.sh -daemon ./config/zk2.properties
+echo "zk3"
+./bin/zookeeper-server-start.sh -daemon ./config/zk3.properties
+
+sleep 1
+echo "zookeeper check"
+while [ $(jps | grep QuorumPeerMain | wc -l) -ne "3" ]
+do
+    number=$(jps | grep QuorumPeerMain | wc -l)
+    echo "sleep 1 ${number}/3"
+    sleep 1
+done
+
+echo "kafka1"
+./bin/kafka-server-start.sh -daemon ./config/server1.properties
+echo "kafka2"
+./bin/kafka-server-start.sh -daemon ./config/server2.properties
+echo "kafka3"
+./bin/kafka-server-start.sh -daemon ./config/server3.properties
+```
+
+실행 권한 추가 후 실행
+```
+chomod 777 start.sh
+./start.sh
+```
 
 ##### Clustered(Multi-server) Setup
 link:https://zookeeper.apache.org/doc/r3.6.3/zookeeperAdmin.html[ZooKeeper Administrator's Guide 3.5.8] +
