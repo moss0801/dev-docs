@@ -882,7 +882,9 @@ export KAFKA_HEAP_OPTS="-Xmx400m -Xms400m"
 echo 'export KAFKA_HEAP_OPTS="'$KAFKA_HEAP_OPTS'"' | tee -a $HOME/.bashrc
 ```
 . config/server.properties 를 config/server1.properties, config/server2.properties, config/server3.properties 로 복사 후.
-각 파일의 아래부분을 수정
+각 파일의 아래부분을 수정 +
+zookeeper.connnect 마지막의 '/test-kafka'은 kafka cluster가 'test-kafka' znode를 root znode로 동작하도록 함. +
+이를 응용해서 하나의 zookeeper cluster로 여러 kafka cluster를 운영 가능.
 +
 .config/server1.properties
 ```
