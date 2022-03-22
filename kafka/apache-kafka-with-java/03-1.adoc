@@ -178,6 +178,7 @@ znode란 주키퍼에서 사용하는 데이터 저장 단위이다.
 각기 다른 하위 znode로 설정된 서로 다른 카프카 클러스터는 각 클러스터의 데이터에 영향을 미치지 않고 정상 동작한다.
 
 주키퍼 옵션 정의 예제
+
 * 파이프라인용 카프카 클러스터: zookeeper.connect=localhost:2181,localhost:2182,localhost:2183/pipeline
 * 실시간 추천용 카프카 클러스터: zookeeper.connect=localhost:2181,localhost:2182,localhost:2183/recommend
 ====
@@ -197,7 +198,7 @@ image:imgs/record.svg[Static, 800]
 컨슈머 개수를 늘림과 동시에 파티션 개수도 늘리면 처리량이 증가하는 효과를 볼 수 있음.
 
 .파티션 개수와 컨슈머 개수를 늘려서 처리량을 늘린다
-image:imgs/multi partitions and consumters.svg[Static, 800]
+image:imgs/multi partitions and consumers.svg[Static, 800]
 
 파티션은 큐(queue)와 비슷한 구조. +
 First-in-first-out(FIFO) 구조와 같이 먼저 들어간 레코드는 컨슈머가 먼저 가져감. +
