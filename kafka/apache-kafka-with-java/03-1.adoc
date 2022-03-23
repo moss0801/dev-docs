@@ -206,7 +206,7 @@ First-in-first-out(FIFO) 구조와 같이 먼저 들어간 레코드는 컨슈�
 파티션의 레코드는 컨슈머가 가져가는 것과 별개로 관리. +
 이러한 특징 때문에 토픽의 레코드는 다양한 목적을 가진 여러 컨슈머 그룹들이 토픽의 데이터를 여러 번 가져가는 것이 가능.
 
-**토픽 이름 제약 조검**
+**토픽 이름 제약 조건**
 
 * 빈 문자열 불가능
 * 마침표 하나(.) 또는 마침표 둘(..) 불가능
@@ -272,6 +272,498 @@ StringSerializer로 직렬화 했다면, String Deserializer로 역직렬화 해
 오프셋은 카프카 컨슈머가 데이터를 가져갈 때 사용. +
 오프셋을 사용하면 컨슈머 그룹으로 이루어진 카프카 컨슈머들이 파티션의 데이터를 어디까지 가져갔는지 명확히 지정 가능.
 
+### 3.4 카프카 클라이언트
+
+프로듀서, 컨슈머, 어드민
+
+#### 3.4.1 프로듀서 API
+
+프로듀서는 데이터의 시작점 +
+카프카에 필요한 데이터를 선언하고 브로커의 특정 토픽의 파티션에 전송 +
+데이터를 전송할 때 리더 파티션을 가지고 있는 카프카 브로커와 직접 통신
+
+직렬화: 자바 또는 외부 시스템에서 사용 가능하도록 바이트 형태로 데이터를 변환하는 기술
+
+[NOTE]
+====
+```
+java, gradle 설치 - 바이너리 다운받음 후, 압축 해제 후, 각 폴더의 bin 경로를 PATH에 추가
+
+$ java -version
+openjdk version "17.0.2" 2022-01-18
+OpenJDK Runtime Environment (build 17.0.2+8-Ubuntu-120.04)
+OpenJDK 64-Bit Server VM (build 17.0.2+8-Ubuntu-120.04, mixed mode, sharing)
+
+$ gradle -v
+
+Welcome to Gradle 7.4.1!
+
+Here are the highlights of this release:
+ - Aggregated test and JaCoCo reports
+ - Marking additional test source directories as tests in IntelliJ
+ - Support for Adoptium JDKs in Java toolchains
+
+For more details see https://docs.gradle.org/7.4.1/release-notes.html
 
 
+------------------------------------------------------------
+Gradle 7.4.1
+------------------------------------------------------------
 
+Build time:   2022-03-09 15:04:47 UTC
+Revision:     36dc52588e09b4b72f2010bc07599e0ee0434e2e
+
+Kotlin:       1.5.31
+Groovy:       3.0.9
+Ant:          Apache Ant(TM) version 1.10.11 compiled on July 10 2021
+JVM:          17.0.2 (Private Build 17.0.2+8-Ubuntu-120.04)
+OS:           Linux 5.10.16.3-microsoft-standard-WSL2 amd64
+```
+====
+
+**카프카 프로듀서 프로젝트 생성**
+gradle를 이용하여 프로젝트 초기화
+
+```
+gradle init --type java-application --dsl groovy --test-framework junit-jupiter
+mv app/* .
+rmdir app
+```
+
+```
+$ gradle init --type java-application --dsl groovy --test-framework junit-jupiter
+
+Generate build using new APIs and behavior (some features may change in the next minor release)? (default: no) [yes, no]
+ no
+
+Project name (default: kafka-producer): kafka-producer
+Source package (default: kafka.producer): com.moss.kafka.producer
+
+> Task :init
+Get more help with your project: https://docs.gradle.org/7.4.1/samples/sample_building_java_applications.html
+
+BUILD SUCCESSFUL in 23s
+2 actionable tasks: 2 executed
+```
+
+초기화 후 폴더 구조
+```
+.
+├── build.gradle       # 1
+├── gradle             # 2
+│   └── wrapper
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
+├── gradlew
+├── gradlew.bat
+├── settings.gradle
+└── src
+    ├── main
+    │   ├── java       # 3
+    │   │   └── com
+    │   │       └── moss
+    │   │           └── kafka
+    │   │               └── producer
+    │   │                   └── App.java
+    │   └── resources
+    └── test
+        ├── java
+        │   └── com
+        │       └── moss
+        │           └── kafka
+        │               └── producer
+        │                   └── AppTest.java
+        └── resources
+```
+
+. 프로젝트를 빌드하기 위한 작업이나 디펜더시를 정의 가능
+. 그래들(gradle)로 생성한 프로젝트의 구조를 선언. 주로 멀티 프로젝트 구조 정의
+. 코드가 위치할 디렉토리
+
+**settings.gradle, build.gradle 수정**
+
+link:https://docs.confluent.io/platform/current/clients/index.html[Kafka Clients]
+
+.settings.gradle
+```
+rootProject.name = 'kafka-producer'
+```
+
+.build.gradle
+```
+plugins {
+    id 'java'
+}
+
+group 'com.moss.kafka'
+version '1.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.apache.kafka:kafka-clients:3.1.0'
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+```
+
+**src/main/java/com/moss/kafka/producer/App.java 수정**
+
+.App.java
+```
+package com.moss.kafka.producer;
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Properties;
+
+public class App {
+    private final static Logger logger = LoggerFactory.getLogger(App.class);
+    private final static String TOPIC_NAME = "test";  // 1
+    private final static String BOOTSTRAP_SERVERS = "localhost:9092,localhost:9093,localhost:9094";  // 2
+
+    public static void main(String[] args) {
+        Properties configs = new Properties();  // 3
+        configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+        configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());  // 4
+        configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());  // 4
+
+        KafkaProducer<String, String> producer = new KafkaProducer<>(configs);  // 5
+
+        String messageValue = "testMessage";  // 6
+        ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC_NAME, messageValue);  /7
+        producer.send(record);  // 8
+        logger.info("{}", record);
+        producer.flush();  // 9
+        producer.close();  // 10
+    }
+}
+```
+
+설명 추가
+```
+package com.moss.kafka.producer;
+
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Properties;
+
+public class App {
+    private final static Logger logger = LoggerFactory.getLogger(App.class);
+    // 1. 토픽 이름
+    private final static String TOPIC_NAME = "test";
+    // 2. 카프카 클러스터 서버 IP:port 목록
+    private final static String BOOTSTRAP_SERVERS = "localhost:9092,localhost:9093,localhost:9094";
+
+    public static void main(String[] args) {
+        // 3. KafkaProducer 옵션
+        // 필수 옵션은 반드시 선언, 선택 옵션은 선택하지 않으면 기본 옵션값으로 동작, 선택 옵션의 기본 값을 알아야 한다.
+        Properties configs = new Properties();
+        configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+        // 4. 메시지 키, 메시지 값 직렬화 클래스 선언
+        configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+
+        // 5. Properties와 함께 KafkaProducer 인스턴스 생성. producer 인스턴스는 ProducerRecord 전송 시 사용.
+        KafkaProducer<String, String> producer = new KafkaProducer<>(configs);
+
+        // 6. 메시지 값 선언
+        String messageValue = "testMessage";
+        // 7. 브로커로 데이터를 보내기 위해 ProducerRecord 생성.
+        // ProducerRecord 생성자는 여러 개. 생성자 개수에 따라 오버로딩(overloading) 되어 생성
+        // 여기서는 토픽 이름과 메시지 값만 선언. 메시지 키는 null로 설정되어 전송
+        // ProducerRecord의 2개의 제네릭 값은 각각 메시지 키와 메시지 값 타입을 의미.
+        // 메시지 키와 메시지 값의 타입은 직렬화 클래스와 동일하게 설정
+        ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC_NAME, messageValue);
+        // 8. recode를 producer의 send() 메서드로 전송
+        // 프로듀서에서 send()는 즉각 전송하지 않고, record를 프로듀서 내부에 가지고 있다가 배치 형태로 브로커에 전송.
+        // 이러한 전송 방식을 '배치 전송'이라 부름. 배치 전송을 통해 카프카는 타 메시지 플랫폼과 차별화된 전송 속도를 가짐.
+        producer.send(record);
+        logger.info("{}", record);
+        // 9. flush()를 통해 프로듀서 내부 버퍼에 가지고 있던 레코드 배치를 브로커로 즉각 전송
+        producer.flush();
+        // 10. 애플리케이션 종료하기 전에 close() 메서드를 호출하여 producer 인스턴스의 리소스들을 안전하게 종료.
+        producer.close();
+    }
+}
+```
+
+실제 운영환경에서는 추가 로직들을 포함.
+
+* 프로듀서 인스턴스를 통해 데이터가 카프카 보러커까지 정상적으로 전송되었는지 확인하는 로직
+* 환경에 따른 추가적인 프로듀서 선택 옵션들의 설정 등
+
+**test 토픽 생성**
+
+test 토픽이 생성되었는지 확인하고 생성되지 않았으면 생성한다.
+
+.토픽 목록 확인
+```
+$ bin/kafka-topics.sh --list --bootstrap-server localhost:9092,localhost:9093,localhost:9094
+__consumer_offsets
+test
+```
+
+.토필 생성 : test 토픽이 없는 경우
+```
+$ bin/kafka-topics.sh --bootstrap-server localhost:9092,localhost:9093,localhost:9094 \
+  --create \
+  --topic test \
+  --partitions 3
+Created topic test.
+```
+
+**프로그램 실행**
+'./gradlew run' 명령어로 실행
+
+```
+$ ./gradlew run
+
+> Task :run
+#### 1 ####
+[main] INFO org.apache.kafka.clients.producer.ProducerConfig - ProducerConfig values:
+        acks = -1
+        batch.size = 16384
+        bootstrap.servers = [localhost:9092, localhost:9093, localhost:9094]
+        buffer.memory = 33554432
+        client.dns.lookup = use_all_dns_ips
+        client.id = producer-1
+        compression.type = none
+        connections.max.idle.ms = 540000
+        delivery.timeout.ms = 120000
+        enable.idempotence = true
+        interceptor.classes = []
+        key.serializer = class org.apache.kafka.common.serialization.StringSerializer
+        linger.ms = 0
+        max.block.ms = 60000
+        max.in.flight.requests.per.connection = 5
+        max.request.size = 1048576
+        metadata.max.age.ms = 300000
+        metadata.max.idle.ms = 300000
+        metric.reporters = []
+        metrics.num.samples = 2
+        metrics.recording.level = INFO
+        metrics.sample.window.ms = 30000
+        partitioner.class = class org.apache.kafka.clients.producer.internals.DefaultPartitioner
+        receive.buffer.bytes = 32768
+        reconnect.backoff.max.ms = 1000
+        reconnect.backoff.ms = 50
+        request.timeout.ms = 30000
+        retries = 2147483647
+        retry.backoff.ms = 100
+        sasl.client.callback.handler.class = null
+        sasl.jaas.config = null
+        sasl.kerberos.kinit.cmd = /usr/bin/kinit
+        sasl.kerberos.min.time.before.relogin = 60000
+        sasl.kerberos.service.name = null
+        sasl.kerberos.ticket.renew.jitter = 0.05
+        sasl.kerberos.ticket.renew.window.factor = 0.8
+        sasl.login.callback.handler.class = null
+        sasl.login.class = null
+        sasl.login.connect.timeout.ms = null
+        sasl.login.read.timeout.ms = null
+        sasl.login.refresh.buffer.seconds = 300
+        sasl.login.refresh.min.period.seconds = 60
+        sasl.login.refresh.window.factor = 0.8
+        sasl.login.refresh.window.jitter = 0.05
+        sasl.login.retry.backoff.max.ms = 10000
+        sasl.login.retry.backoff.ms = 100
+        sasl.mechanism = GSSAPI
+        sasl.oauthbearer.clock.skew.seconds = 30
+        sasl.oauthbearer.expected.audience = null
+        sasl.oauthbearer.expected.issuer = null
+        sasl.oauthbearer.jwks.endpoint.refresh.ms = 3600000
+        sasl.oauthbearer.jwks.endpoint.retry.backoff.max.ms = 10000
+        sasl.oauthbearer.jwks.endpoint.retry.backoff.ms = 100
+        sasl.oauthbearer.jwks.endpoint.url = null
+        sasl.oauthbearer.scope.claim.name = scope
+        sasl.oauthbearer.sub.claim.name = sub
+        sasl.oauthbearer.token.endpoint.url = null
+        security.protocol = PLAINTEXT
+        security.providers = null
+        send.buffer.bytes = 131072
+        socket.connection.setup.timeout.max.ms = 30000
+        socket.connection.setup.timeout.ms = 10000
+        ssl.cipher.suites = null
+        ssl.enabled.protocols = [TLSv1.2, TLSv1.3]
+        ssl.endpoint.identification.algorithm = https
+        ssl.engine.factory.class = null
+        ssl.key.password = null
+        ssl.keymanager.algorithm = SunX509
+        ssl.keystore.certificate.chain = null
+        ssl.keystore.key = null
+        ssl.keystore.location = null
+        ssl.keystore.password = null
+        ssl.keystore.type = JKS
+        ssl.protocol = TLSv1.3
+        ssl.provider = null
+        ssl.secure.random.implementation = null
+        ssl.trustmanager.algorithm = PKIX
+        ssl.truststore.certificates = null
+        ssl.truststore.location = null
+        ssl.truststore.password = null
+        ssl.truststore.type = JKS
+        transaction.timeout.ms = 60000
+        transactional.id = null
+        value.serializer = class org.apache.kafka.common.serialization.StringSerializer
+
+#### 2 ####
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka version: 3.1.0
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka commitId: 37edeed0777bacb3
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka startTimeMs: 1648054717171
+[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Resetting the last seen epoch of partition test-0 to 21 since the associated topicId changed from null to n3nYAgNIQ8aIcxrMbcn24A
+[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Resetting the last seen epoch of partition test-2 to 16 since the associated topicId changed from null to n3nYAgNIQ8aIcxrMbcn24A
+[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Resetting the last seen epoch of partition test-3 to 21 since the associated topicId changed from null to n3nYAgNIQ8aIcxrMbcn24A
+[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Resetting the last seen epoch of partition test-1 to 16 since the associated topicId changed from null to n3nYAgNIQ8aIcxrMbcn24A
+[kafka-producer-network-thread | producer-1] INFO org.apache.kafka.clients.Metadata - [Producer clientId=producer-1] Cluster ID: 4qcm1av-QEm2eFZVApehnw
+
+#### 3 ####
+[main] INFO com.moss.kafka.producer.App - ProducerRecord(topic=test, partition=null, headers=RecordHeaders(headers = [], isReadOnly = true), key=null, value=testMessage, timestamp=null)
+[main] INFO org.apache.kafka.clients.producer.KafkaProducer - [Producer clientId=producer-1] Closing the Kafka producer with timeoutMillis = 9223372036854775807 ms.
+[main] INFO org.apache.kafka.common.metrics.Metrics - Metrics scheduler closed
+[main] INFO org.apache.kafka.common.metrics.Metrics - Closing reporter org.apache.kafka.common.metrics.JmxReporter
+[main] INFO org.apache.kafka.common.metrics.Metrics - Metrics reporters closed
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - App info kafka.producer for producer-1 unregistered
+
+BUILD SUCCESSFUL in 5m 59s
+2 actionable tasks: 2 executed
+```
+
+. ProducerConfig values : 카프카 프로듀서 구동 시 설정한 옵션
+. Kafka version: 3.1.0 : 카프카 버전
+. ProducerRecord(topic=test, partition=null, headers=RecordHeaders(headers = [], isReadOnly = true), key=null, value=testMessage, timestamp=null) +
+전송한 ProducerRecord. 생성 시 메시지 키를 설정하지 않았기에 null로 설정된 것 확인.
+
+.kafka-console-consumer 로 데이터 확인
+```
+$ bin/kafka-console-consumer.sh --bootstrap-server localhost:9092,localhost:9093,localhost:9094 \
+  --topic test \
+  --from-beginning
+...
+testMessage
+```
+
+**프로듀서 중요 개념**
+
+프로듀서는 카프카 브로커로 데이터를 전송할 때 내부적으로 파티셔너, 배치 생성 단계를 거침. +
+ProducerRecord 인스턴스는 필수 파라미터인 토픽과 메시지 값만 설정 +
+아래의 값을 추가로 설정할 수 있다.
+
+* 파티션 번호
+* 타임스탬프
+* 메시지 키
+
+.ProducerRecord 생성자 목록
+```
+public ProducerRecord(String topic, Integer partition, Long timestamp, K key, V value, Iterable<Header> headers)
+public ProducerRecord(String topic, Integer partition, Long timestamp, K key, V value)
+public ProducerRecord(String topic, Integer partition, K key, V value, Iterable<Header> headers)
+public ProducerRecord(String topic, Integer partition, K key, V value)
+public ProducerRecord(String topic, K key, V value)
+public ProducerRecord(String topic, V value)
+```
+
+KafkaProducer.send() 메서드를 호출하면 ProducerRecord는 파티셔너(partitioner)에서 토픽의 어느 파티션으로 전송될 것인지 정해짐.
+KafkaProducer 생성 시 파티셔너를 지정하지 않으면 DefaultPartitoner을 설정.
+
+파티셔너에 의해 구분된 레코드는 데이터를 전송하기 전에 어큐뮬레이터(accumulator)에 데이터를 버퍼로 쌓아놓고 발송. +
+버퍼로 쌓인 데이터는 배치로 묶어서 전송함으로써 카프카의 프로듀서 처리량을 향상시키는 데에 상당한 도움을 줌.
+
+Partitioner (3.1.0 버전 기준)
+
+* DefaultPartitioner (Default) link:https://github.com/a0x8o/kafka/blob/master/clients/src/main/java/org/apache/kafka/clients/producer/internals/DefaultPartitioner.java[SourceCode] : +
+Key 존재 시 Utils.murmur2() 해쉬 값 사용, Key 미존재 시 StickyPartitionCache 사용
+* UniformStickyPartitioner link:https://github.com/a0x8o/kafka/blob/master/clients/src/main/java/org/apache/kafka/clients/producer/UniformStickyPartitioner.java[SourceCode] :
+항상 StickyPartitionCache 사용
+* RoundRobinPartitioner link:https://github.com/a0x8o/kafka/blob/master/clients/src/main/java/org/apache/kafka/clients/producer/RoundRobinPartitioner.java[SourceCode] :
+항상 RoundRobin
+
+link:https://www.confluent.io/blog/apache-kafka-producer-improvements-sticky-partitioner/[Apache Kafka Producer Improvements with the Sticky Partitioner]
+image:imgs/sticky-partitioner-strategy.png[]
+
+RoundRobinPartitioner는 같은 Topic의 동일 Batch 내 레코드여도 매번 다른 파티션이 선택하지만, +
+StickyPartitioner는 같은 Topic의 동일 batch 내 레코드면 같은 파티션을 선택. +
+다음 배치에는 이전 파티션과 아닌 파티션을 랜덤하게 선택.
+
+```
+public class StickyPartitionCache {
+    private final ConcurrentMap<String, Integer> indexCache;
+    public StickyPartitionCache() {
+        this.indexCache = new ConcurrentHashMap<>();
+    }
+
+    public int partition(String topic, Cluster cluster) {
+        Integer part = indexCache.get(topic);
+        if (part == null) {
+            return nextPartition(topic, cluster, -1);
+        }
+        return part;
+    }
+
+    public int nextPartition(String topic, Cluster cluster, int prevPartition) {
+        List<PartitionInfo> partitions = cluster.partitionsForTopic(topic);
+        Integer oldPart = indexCache.get(topic);
+        Integer newPart = oldPart;
+        // Check that the current sticky partition for the topic is either not set or that the partition that
+        // triggered the new batch matches the sticky partition that needs to be changed.
+        if (oldPart == null || oldPart == prevPartition) {
+            List<PartitionInfo> availablePartitions = cluster.availablePartitionsForTopic(topic);
+            if (availablePartitions.size() < 1) {
+                Integer random = Utils.toPositive(ThreadLocalRandom.current().nextInt());
+                newPart = random % partitions.size();
+            } else if (availablePartitions.size() == 1) {
+                newPart = availablePartitions.get(0).partition();
+            } else {
+                while (newPart == null || newPart.equals(oldPart)) {
+                    int random = Utils.toPositive(ThreadLocalRandom.current().nextInt());
+                    newPart = availablePartitions.get(random % availablePartitions.size()).partition();
+                }
+            }
+            // Only change the sticky partition if it is null or prevPartition matches the current sticky partition.
+            if (oldPart == null) {
+                indexCache.putIfAbsent(topic, newPart);
+            } else {
+                indexCache.replace(topic, prevPartition, newPart);
+            }
+            return indexCache.get(topic);
+        }
+        return indexCache.get(topic);
+    }
+}
+```
+
+사용자 지정 파티셔너를 생성하기 위해서는 Partitioner 인터페이스를 구현.
+
+파티셔너를 통해 파티션이 지정된 데이터는 어큐뮬레이터에 버퍼로 쌓임. +
+센더(sender) 스레드는 어큐뮬레이터에 쌓인 배치 데이터를 가져가 카프카 브로커로 전송.
+
+브로커로 전송 시 압축 방식을 정할 수 있음. +
+압축 옵션을 정하지 않으면 압축이 되지 않은 상태로 전송 +
+압축 옵션: gzip, snappy, lz4, zstd
+
+압축을 하면 데이터 전송 시 네트워크 처리량에 이득을 볼 수 있지만 압축을 하는 데에 CPU 또는 메모리 리소스를 사용하므로 사용환경에 따라 적절한 압축 옵션을 사용하는 것이 중요.
+또한, 프로듀서에서 압축한 메시지는 컨슈머 애플리케이션이 압축을 풀게 되는데 이때도 컨슈머 애플리케이션 리소스가 사용되는 점을 주의.
+
+**프로듀서 주요 옵션**
+
+* 필수 옵션
+** bootstrap.servers:
+* 선택 옵션
