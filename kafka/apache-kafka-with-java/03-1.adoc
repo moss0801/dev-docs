@@ -803,7 +803,7 @@ link:https://github.com/apache/kafka/blob/trunk/clients/src/main/java/org/apache
 
 |bootstrap.servers|브로커 호스트 이름:포트 1개 이상. 2개 이상 입력하면 일부 브로커에 이슈가 발생하더라도 접속하는데 이슈 없도록 설정 가능.
 |key.serializer|레코드의 메시지 키를 직렬화하는 클래스
-value.serializer|레코드의 메시지 값을 직렬화하는 클래스
+|value.serializer|레코드의 메시지 값을 직렬화하는 클래스
 |===
 
 [cols="1,9"]
