@@ -852,11 +852,50 @@ a|기본값: true +
 프로듀서가 레코드를 전송할 때 레코드를 트랜잭션 단위로 묶을지 여부 설정 +
 프로듀서의 고유한 트랜잭션 아이디를 설정할 수 있다. 이 값을 설정하면 트랜잭션 프로듀서로 동작 +
 자세한 내용은 챕터 4에서 확인
-|compression.type|기본값: none +
+|compression.type
+a|기본값: none +
 데이터 압축 유형, 사용가능 값은 (none, gzip, snappy, lz4, zstd) +
 압축은 배치 단위로 이루어 짐. 이에 효율적인 배치는 효율적 압축률로 이어짐.
 
+연관 주요 설정
+* batch.size
+* linger.ms : 5
+
+link:https://developer.ibm.com/articles/benefits-compression-kafka-messaging/[Message compression in Apache Kafka]
+
+[개인정리] json을 사용한다면 snappy 사용 추천
+
 |===
+
+**압축 유형(compresssion.type) 비교**
+
+|===
+|Compression type|Compression ratio|CPU usage|Compression speed|Network bandwidth usage
+
+|Gzip|Highest|Highest|Slowest|Lowest
+|Snappy|Medium|Moderate|Moderate|Medium
+|Lz4|Low|Lowest|Fastest|Highest
+|Zstd|Medium|Moderate|Moderate|Medium
+|===
+
+**IBM 압축 유형별 테스트 결과**
+
+* data: 1000 messages in JSON format with an average size of 10 KB
+* total data: 10 MB
+* serializer: org.apache.kafka.common.serialization.StringSerialize
+
+|===
+|Metrics|Uncompressed|Gzip|Snappy|lz4|Zstd
+
+|Avg latency (ms)|65|10.41|10.1|9.26|10.78
+|Disk space (mb)|10|0.92|2.18|2.83|1.47
+|Effective compression ratio|1|0.09|0.21|0.28|0.15
+|Process CPU usage %|2.35|11.46|7.25|5.89|8.93
+|===
+
+정리: 실시간 데이터(이벤트 등)는 snappy, 아카이브 데이터(로그 등)는 gzip
+
+의문: 데이터 크기가 아주 작은 경우에는 Uncompressed가 가장 빠를까?
 
 **메시지 키를 가진 데이터를 전송하는 프로듀서**
 
