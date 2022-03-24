@@ -1,3 +1,5 @@
 
 
+카프카 버전: 3.1.0
+
 Diagram: link:https://docs.google.com/presentation/d/1VbrkyQjiG4JsEq5L03firkpBdD2rYIHJXsJZaC3sP84/edit#slide=id.p[Google Driver]
