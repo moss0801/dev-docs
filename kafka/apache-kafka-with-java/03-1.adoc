@@ -845,7 +845,7 @@ The producer groups together any records that arrive in between request transmis
 a|기본값: true +
 멱등성 프로듀서로 동작 여부 +
 [개인학습] true인 경우 필요 조건 +
-ㆍ retries : value > 0 (기본값: Integer.MAX_VALUE)
+ㆍ retries : value > 0 (기본값: Integer.MAX_VALUE) +
 ㆍ acks : all (기본값: all)
 |transactional.id|기본값: null +
 프로듀서가 레코드를 전송할 때 레코드를 트랜잭션 단위로 묶을지 여부 설정 +
