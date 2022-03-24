@@ -834,8 +834,9 @@ Requests sent to brokers will contain multiple batches, one for each partition w
 |**linger.ms**|기본값: 0 +
 배치를 전송하기 전까지 기다리는 최소 시간 +
 [개인학습] 프로듀서는 메시지 도착 속도가 메시지 전송 속도보다 빠를 때만 배치로 묶어서 보냄 +
-메시지를 바로바로 브로커로 전송할 수 있는 상황에서는 배치가 쌓일 때까지 기다리지 않고 전송 +
-기본값이 0이기 때문에 전송 가능하다면 바로 전송되어 레코드들이 배치로 묶이지 않음. 문서상 수정 예는 5 (5ms) +
+0인 경우 메시지를 바로바로 브로커로 전송할 수 있는 상황에서는 배치가 쌓일 때까지 기다리지 않고 전송 +
+기본값이 0이기 때문에 전송 가능하다면 바로 전송되어 레코드들이 배치로 묶이지 않음. +
+batch 효율을 높이기 위한 문서상 예제 값은 5 (5ms) +
 ```
 The producer groups together any records that arrive in between request transmissions into a single batched request. Normally this occurs only under load when records arrive faster than they can be sent out.
 ```
@@ -863,7 +864,8 @@ a|기본값: none +
 
 link:https://developer.ibm.com/articles/benefits-compression-kafka-messaging/[Message compression in Apache Kafka]
 
-[개인정리] json을 사용한다면 snappy 사용 추천
+[개인정리] 실시간 데이터(이벤트 등)는 snappy, 아카이브 데이터(로그 등)는 gzip 사용이 유리할 것으로 생각 +
+snappy는 반복적인 패턴이 존재하는 경우 효율적. json은 반복적인 패턴이 많기에 snappy가 효율적
 
 |===
 
