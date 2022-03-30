@@ -1,0 +1,319 @@
+
+#### 3.4.3 어드민 API
+
+실제 운영환경에서는 프로듀서와 컨슈머를 통해 데이터를 주고받는 것만큼 카프카에 설정된 내부 옵션을 설정하고 확인하는 것이 중요 +
+내부 옵션을 확인하는 가장 확실한 방법은 브로커 중 한 대에 접속하여 카프카 브로커 옵션을 확인하는 것이지만 매우 번거로운 작업 +
+카프카 커맨드 라인 인터페이스로 명령을 내려 확인하는 방법도 있지만 일회성 작업에 그침
+
+카프카 클라이언트에서는 내부 옵션들을 설정하거나 조회하기 위해 AdminClient 클래스를 제공
+
+클러스터의 옵션과 관련된 부분을 자동화할 수 있는 예시들
+
+* 카프카 컨슈머를 멀티 스레드로 생성할 때, 구독하는 토픽의 파티션 개수만큼 스레드를 생성하고 싶을 때, +
+스레드 생성 전에 해당 토픽의 파티션 개수를 어드민 API를 통해 조회
+* AdminClient 클래스로 구현한 웹 대시보드를 통해 ACL(Access Control List)이 적용된 클러스터의 리소스 접근 권한 규칙 추가
+* 특정 토픽의 데이터양이 늘어남을 감지하고 AdminClient 클래스로 해당 토픽의 파티션을 늘림
+
+.어드민 API 선언 방법
+```
+Properties configs = new Properties();
+configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092,localhost:9093,localhost:9094");
+AdminClient admin = AdminClient.create(configs);
+```
+
+클러스터 정보 설정만 필요 +
+create() 메서드로 KafkaAdminClient를 반환받음 +
+KafkaAdminClient는 브로커들의 옵션들을 확인, 설정할 수 있는 유틸 클래스
+
+.KafkaAdminClient 주요 메서드
+|===
+|메서드|설명
+
+|describeCluster(DescribeClusterOptions options)
+|브로커의 정보 조회
+
+|listTopics(ListTopicsOptions options)
+|토픽 리스트 조회
+
+|listConsumerGroups(ListConsumerGroupsOptions options)
+|컨슈머 그룹 조회
+
+|createTopics(Collection<NewTopic> newTopics, CreateTopicsOptions options)
+|신규 토픽 생성
+
+|createPartitions(Map<String, NewPartitions> newPartitions, CreatePartitionsOptions options)
+|파티션 개수 변경
+
+|createAcls(Collection<AclBinding> acls, CreateAclsOptions options)
+|접근 제어 규칙 생성
+
+|===
+
+**카프카 컨슈머 프로젝트 생성**
+
+gradle를 이용하여 프로젝트 초기화
+
+```
+gradle init --type java-application --dsl groovy --test-framework junit-jupiter
+mv app/* .
+rmdir app
+```
+
+```
+$ gradle init --type java-application --dsl groovy --test-framework junit-jupiter
+Starting a Gradle Daemon, 1 incompatible and 1 stopped Daemons could not be reused, use --status for details
+
+Generate build using new APIs and behavior (some features may change in the next minor release)? (default: no) [yes, no]
+ no
+
+Project name (default: kafka-consumer): kafka-admin
+
+Source package (default: kafka.consumer): com.moss.kafka.admin
+
+
+> Task :init
+Get more help with your project: https://docs.gradle.org/7.4.1/samples/sample_building_java_applications.html
+
+BUILD SUCCESSFUL in 41s
+2 actionable tasks: 2 executed
+```
+
+초기화 후 폴더 구조
+```
+.
+├── build.gradle
+├── gradle
+│   └── wrapper
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
+├── gradlew
+├── gradlew.bat
+├── settings.gradle
+└── src
+    ├── main
+    │   ├── java
+    │   │   └── com
+    │   │       └── moss
+    │   │           └── kafka
+    │   │               └── producer
+    │   │                   └── App.java
+    │   └── resources
+    └── test
+        ├── java
+        │   └── com
+        │       └── moss
+        │           └── kafka
+        │               └── producer
+        │                   └── AppTest.java
+        └── resources
+```
+
+**settings.gradle, build.gradle 수정**
+
+.settings.gradle
+```
+rootProject.name = 'kafka-admin'
+```
+
+.build.gradle
+```
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group 'com.moss.kafka'
+version '1.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.apache.kafka:kafka-clients:3.1.0'
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+}
+
+application {
+    mainClass = 'com.moss.kafka.admin.App'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+```
+
+**브로커 정보 조회 (예시1)**
+```
+package com.moss.kafka.admin;
+
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.DescribeConfigsResult;
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.config.ConfigResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Collections;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+
+public class App {
+    private final static Logger logger = LoggerFactory.getLogger(App.class);
+    private final static String BOOTSTRAP_SERVERS = "localhost:9092,localhost:9093,localhost:9094";
+
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
+        Properties configs = new Properties();
+        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+
+        AdminClient admin = AdminClient.create(configs);
+
+        logger.info("== Get broker infomration");
+        for (Node node : admin.describeCluster().nodes().get()) {
+            logger.info("node : {}", node);
+            ConfigResource cr = new ConfigResource(ConfigResource.Type.BROKER, node.idString());
+            DescribeConfigsResult describeConfigs =
+                    admin.describeConfigs(Collections.singleton(cr));
+            describeConfigs.all().get().forEach((broker, config) -> {
+                config.entries().forEach(configEntry -> {
+                    logger.info(configEntry.name() + "= " + configEntry.value());
+                });
+            });
+        }
+
+        admin.close();
+    }
+}
+```
+
+.브로커 정보 조회 (예시1) 실행 결과
+```
+$ ./gradlew run
+
+> Task :run
+[main] INFO org.apache.kafka.clients.admin.AdminClientConfig - AdminClientConfig values:
+        bootstrap.servers = [localhost:9092, localhost:9093, localhost:9094]
+        client.dns.lookup = use_all_dns_ips
+        client.id =
+        connections.max.idle.ms = 300000
+        default.api.timeout.ms = 60000
+        metadata.max.age.ms = 300000
+        metric.reporters = []
+        metrics.num.samples = 2
+        metrics.recording.level = INFO
+        metrics.sample.window.ms = 30000
+        receive.buffer.bytes = 65536
+        reconnect.backoff.max.ms = 1000
+        reconnect.backoff.ms = 50
+        request.timeout.ms = 30000
+        retries = 2147483647
+        retry.backoff.ms = 100
+        ... sasl.*
+        security.protocol = PLAINTEXT
+        security.providers = null
+        send.buffer.bytes = 131072
+        socket.connection.setup.timeout.max.ms = 30000
+        socket.connection.setup.timeout.ms = 10000
+        ... ssl.*
+
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka version: 3.1.0
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka commitId: 37edeed0777bacb3
+[main] INFO org.apache.kafka.common.utils.AppInfoParser - Kafka startTimeMs: 1648633105995
+[main] INFO com.moss.kafka.admin.App - == Get broker infomration
+[main] INFO com.moss.kafka.admin.App - == Node : localhost:9092 (id: 1 rack: null)
+[main] INFO com.moss.kafka.admin.App - == Broker: ConfigResource(type=BROKER, name='1')
+[main] INFO com.moss.kafka.admin.App - advertised.listeners= PLAINTEXT://localhost:9092
+[main] INFO com.moss.kafka.admin.App - alter.config.policy.class.name= null
+[main] INFO com.moss.kafka.admin.App - alter.log.dirs.replication.quota.window.num= 11
+[main] INFO com.moss.kafka.admin.App - alter.log.dirs.replication.quota.window.size.seconds= 1
+[main] INFO com.moss.kafka.admin.App - authorizer.class.name=
+[main] INFO com.moss.kafka.admin.App - auto.create.topics.enable= true
+[main] INFO com.moss.kafka.admin.App - auto.leader.rebalance.enable= true
+[main] INFO com.moss.kafka.admin.App - background.threads= 10
+[main] INFO com.moss.kafka.admin.App - broker.heartbeat.interval.ms= 2000
+[main] INFO com.moss.kafka.admin.App - broker.id= 1
+[main] INFO com.moss.kafka.admin.App - broker.id.generation.enable= true
+[main] INFO com.moss.kafka.admin.App - broker.rack= null
+[main] INFO com.moss.kafka.admin.App - broker.session.timeout.ms= 9000
+...
+[main] INFO com.moss.kafka.admin.App - == Node : localhost:9093 (id: 2 rack: null)
+[main] INFO com.moss.kafka.admin.App - == Broker: ConfigResource(type=BROKER, name='2')
+...
+[main] INFO com.moss.kafka.admin.App - advertised.listeners= PLAINTEXT://localhost:9093
+...
+[main] INFO com.moss.kafka.admin.App - == Node : localhost:9094 (id: 3 rack: null)
+[main] INFO com.moss.kafka.admin.App - == Broker: ConfigResource(type=BROKER, name='3')
+[main] INFO com.moss.kafka.admin.App - advertised.listeners= PLAINTEXT://localhost:9094
+...
+[kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.utils.AppInfoParser - App info kafka.admin.client for adminclient-1 unregistered
+[kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.metrics.Metrics - Metrics scheduler closed
+[kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.metrics.Metrics - Closing reporter org.apache.kafka.common.metrics.JmxReporter
+[kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.metrics.Metrics - Metrics reporters closed
+```
+
+**토픽 정보 조회 (예시2)**
+```
+logger.info("== Get topic infomration");
+        Map<String, TopicDescription> topicInformation =
+            admin.describeTopics(Collections.singletonList("test")).allTopicNames().get();
+        logger.info("{}", topicInformation);
+        topicInformation.entrySet().stream().sorted(Comparator.comparing(Map.Entry::getKey))
+            .forEach(topicDescription -> {
+                logger.info("== Topic: {}", topicDescription.getKey());
+                var topic = topicDescription.getValue();
+                logger.info("name={}", topic.name());
+                logger.info("topicId={}", topic.topicId());
+                logger.info("isInternal={}", topic.isInternal());
+                logger.info("authorizedOperations={}", topic.authorizedOperations());
+                logger.info("==== {} - Partitions", topic.name());
+                topic.partitions().forEach(topicPartitionInfo -> {
+                    logger.info("partition={}", topicPartitionInfo.partition());
+                    logger.info("leader={}", topicPartitionInfo.leader());
+                    logger.info("replicas={}", topicPartitionInfo.replicas());
+                    logger.info("isr={}", topicPartitionInfo.isr());
+                });
+
+        });
+```
+
+토픽 설정 조회 +
+파티션 개수, 파티션의 위치, 리더 파티션의 위치 등 확인
+
+.토픽 정보 조회 (예시2) 실행 결과
+```
+[main] INFO com.moss.kafka.admin.App - == Get topic infomration
+[main] INFO com.moss.kafka.admin.App - {test=(name=test, internal=false, partitions=(partition=0, leader=localhost:9093 (id: 2 rack: null), replicas=localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null), localhost:9092 (id: 1 rack: null), isr=localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)),(partition=1, leader=localhost:9092 (id: 1 rack: null), replicas=localhost:9094 (id: 3 rack: null), localhost:9093 (id: 2 rack: null), localhost:9092 (id: 1 rack: null), isr=localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)),(partition=2, leader=localhost:9092 (id: 1 rack: null), replicas=localhost:9092 (id: 1 rack: null), localhost:9094 (id: 3 rack: null), localhost:9093 (id: 2 rack: null), isr=localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)),(partition=3, leader=localhost:9093 (id: 2 rack: null), replicas=localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null), localhost:9092 (id: 1 rack: null), isr=localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)), authorizedOperations=null)}
+[main] INFO com.moss.kafka.admin.App - == Topic: test
+[main] INFO com.moss.kafka.admin.App - name=test
+[main] INFO com.moss.kafka.admin.App - topicId=n3nYAgNIQ8aIcxrMbcn24A
+[main] INFO com.moss.kafka.admin.App - isInternal=false
+[main] INFO com.moss.kafka.admin.App - authorizedOperations=null
+[main] INFO com.moss.kafka.admin.App - ==== test - Partitions
+[main] INFO com.moss.kafka.admin.App - partition=0
+[main] INFO com.moss.kafka.admin.App - leader=localhost:9093 (id: 2 rack: null)
+[main] INFO com.moss.kafka.admin.App - replicas=[localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null), localhost:9092 (id: 1 rack: null)]
+[main] INFO com.moss.kafka.admin.App - isr=[localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)]
+[main] INFO com.moss.kafka.admin.App - partition=1
+[main] INFO com.moss.kafka.admin.App - leader=localhost:9092 (id: 1 rack: null)
+[main] INFO com.moss.kafka.admin.App - replicas=[localhost:9094 (id: 3 rack: null), localhost:9093 (id: 2 rack: null), localhost:9092 (id: 1 rack: null)]
+[main] INFO com.moss.kafka.admin.App - isr=[localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)]
+[main] INFO com.moss.kafka.admin.App - partition=2
+[main] INFO com.moss.kafka.admin.App - leader=localhost:9092 (id: 1 rack: null)
+[main] INFO com.moss.kafka.admin.App - replicas=[localhost:9092 (id: 1 rack: null), localhost:9094 (id: 3 rack: null), localhost:9093 (id: 2 rack: null)]
+[main] INFO com.moss.kafka.admin.App - isr=[localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)]
+[main] INFO com.moss.kafka.admin.App - partition=3
+[main] INFO com.moss.kafka.admin.App - leader=localhost:9093 (id: 2 rack: null)
+[main] INFO com.moss.kafka.admin.App - replicas=[localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null), localhost:9092 (id: 1 rack: null)]
+[main] INFO com.moss.kafka.admin.App - isr=[localhost:9092 (id: 1 rack: null), localhost:9093 (id: 2 rack: null), localhost:9094 (id: 3 rack: null)]
+```
+
+어드민 API 사용 후 명시적으로 종료 메서드 호출하여 리소스가 낭비되지 않도록 함
+```
+admin.close();
+```
+
+어드민 API를 사용할 때 클러스터의 버전과 클라이언트의 버전을 맞춰서 사용 +
+어드민 API의 많은 부분이 버전이 올라가면서 자주 변경되기 때문
