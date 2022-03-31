@@ -263,59 +263,14 @@ $ ./gradlew run
         reconnect.backoff.ms = 50
         request.timeout.ms = 30000
         retry.backoff.ms = 100
-        sasl.client.callback.handler.class = null
-        sasl.jaas.config = null
-        sasl.kerberos.kinit.cmd = /usr/bin/kinit
-        sasl.kerberos.min.time.before.relogin = 60000
-        sasl.kerberos.service.name = null
-        sasl.kerberos.ticket.renew.jitter = 0.05
-        sasl.kerberos.ticket.renew.window.factor = 0.8
-        sasl.login.callback.handler.class = null
-        sasl.login.class = null
-        sasl.login.connect.timeout.ms = null
-        sasl.login.read.timeout.ms = null
-        sasl.login.refresh.buffer.seconds = 300
-        sasl.login.refresh.min.period.seconds = 60
-        sasl.login.refresh.window.factor = 0.8
-        sasl.login.refresh.window.jitter = 0.05
-        sasl.login.retry.backoff.max.ms = 10000
-        sasl.login.retry.backoff.ms = 100
-        sasl.mechanism = GSSAPI
-        sasl.oauthbearer.clock.skew.seconds = 30
-        sasl.oauthbearer.expected.audience = null
-        sasl.oauthbearer.expected.issuer = null
-        sasl.oauthbearer.jwks.endpoint.refresh.ms = 3600000
-        sasl.oauthbearer.jwks.endpoint.retry.backoff.max.ms = 10000
-        sasl.oauthbearer.jwks.endpoint.retry.backoff.ms = 100
-        sasl.oauthbearer.jwks.endpoint.url = null
-        sasl.oauthbearer.scope.claim.name = scope
-        sasl.oauthbearer.sub.claim.name = sub
-        sasl.oauthbearer.token.endpoint.url = null
+        ... sasl.*
         security.protocol = PLAINTEXT
         security.providers = null
         send.buffer.bytes = 131072
         session.timeout.ms = 45000
         socket.connection.setup.timeout.max.ms = 30000
         socket.connection.setup.timeout.ms = 10000
-        ssl.cipher.suites = null
-        ssl.enabled.protocols = [TLSv1.2, TLSv1.3]
-        ssl.endpoint.identification.algorithm = https
-        ssl.engine.factory.class = null
-        ssl.key.password = null
-        ssl.keymanager.algorithm = SunX509
-        ssl.keystore.certificate.chain = null
-        ssl.keystore.key = null
-        ssl.keystore.location = null
-        ssl.keystore.password = null
-        ssl.keystore.type = JKS
-        ssl.protocol = TLSv1.3
-        ssl.provider = null
-        ssl.secure.random.implementation = null
-        ssl.trustmanager.algorithm = PKIX
-        ssl.truststore.certificates = null
-        ssl.truststore.location = null
-        ssl.truststore.password = null
-        ssl.truststore.type = JKS
+        ... ssl.*
         value.deserializer = class org.apache.kafka.common.serialization.StringDeserializer
 
 #### 2 ####
@@ -346,12 +301,24 @@ $ ./gradlew run
 컨슈머를 각 컨슈머 그룹으로부터 격리된 환경에서 안전하게 운영할 수 있도록 도와주는 카프카의 독특한 방식 +
 컨슈머 그룹으로 묶인 컨슈머들은 토픽의 1개 이상 파티션들에 할당되어 데이터를 가져갈 수 있음
 
+[.text-center]
+.컨슈머 1개로 이루어진 컨슈머 그룹이 3개의 파티션에 할당
+image:imgs/3.4.2-1 consumer1partition3.svg[Static, 400]
+
 1개의 파티션은 최대 1개의 컨슈머에 할당 가능 +
 1개의 컨슈머는 여러 개의 파티션에 할당 가능 +
-컨슈머 그룹의 컨슈머 개수는 토픽의 파티션 개수와 같거나 작아야 함. (컨슈머 그룹의 컨슈머 수 <= 파티션 수)
+컨슈머 그룹의 컨슈머 개수는 토픽의 파티션 개수와 같거나 작아야 함. (컨슈머 그룹의 컨슈머 수 \<= 파티션 수)
+
+[.text-center]
+.컨슈머 2개, 컨슈머 3개인 경우
+image:imgs/3.4.2-2 consumer2_consumer3.svg[Static, 800]
 
 만약 4개의 컨슈머로 이루어진 컨슈머 그룹으로 3개의 파티션을 가진 토픽에서 데이터를 가져가기 위해 할당하면 1개의 컨슈머는 파티션을 할당받지 못하고 유휴 상태로 남음.
 파티션을 할당받지 못한 컨슈머는 스레드만 차지하고 실질적인 데이터 처리를 하지 못하므로 애플리케이션 실행에 있어 불필요한 스레드로 남음.
+
+[.text-center]
+.컨슈머 1개가 놀고 있는 모습
+image:imgs/3.4.2-3 consumer1idle.svg[Static, 400]
 
 컨슈머 그룹은 다른 컨슈머 그룹과 격리 +
 카프카 프로듀서가 보낸 데이터를 각기 다른 역할을 하는 컨슈머 그룹간 영향을 받지 않게 처리 가능
@@ -360,6 +327,10 @@ $ ./gradlew run
 실시간 리소스를 시간순으로 확인하기 우해서 데이터를 엘라스틱서치에 저장하고 이와 동시에 대용량 적재를 위해 하둡에 적재할 것이다.
 만약 카프카를 활용한 파이프라인이 아니라면 서버에서 실행되는 리소스 수집 및 전송 에이전트는 수집한 리소스를 엘라스틱서치와 하둡에 적재하기 위해 동기적으로 적재를 요청할 것이다.
 이렇게 동기로 실행되는 에이전트는 엘라스틱서치 또는 하둡 둘 중 하나에 장애가 발생한다면 더는 적재가 불가능할 수 있다.
+
+[.text-center]
+.동기 로직으로 돌아가는 에이전트 애플리케이션
+image:imgs/3.4.2-4 sync agent application.svg[Static, 500]
 
 반면, 카프카는 이러한 파이프라인을 운영함에 있어 최종 적재되는 저장소의 장애에 유연하게 대응할 수 있도록
 각기 다른 저장소에 저장하는 컨슈머를 다른 컨슈머 그룹으로 묶음으로써 각 저장소의 장애에 격리되어 운영할 수 있다.
@@ -371,6 +342,10 @@ $ ./gradlew run
 이전에 동기로 적재하는 에이전트와 동일한 이슈로 적재에 지연이 발생할 수 있기 때문이다.
 현재 운영하고 있는 토픽의 데이터가 어디에 적재되는지, 어떻게 처리되는지 파악하고 컨슈머 그룹으로 따로 나눌 수 있는 것은 최대한 나누는 것이 좋다.
 
+[.text-center]
+.컨슈머 그룹으로 적재 로직을 분리하여 운영
+image:imgs/3.4.2-5 separate by consumer group.svg[Static, 800]
+
 컨슈머 그룹으로 이루어진 컨슈머들 중 일부 컨슈머에 장애 발생 시, 장애가 발생한 컨슈머에 할당된 파티션은 장애가 발생하지 않은 컨슈머로 소유권이 넘어감. +
 이 과정을 '리밸런싱(rebalancing)'이라 부름. +
 리밸런싱은 크게 두 가지 상황에서 발생 +
@@ -378,6 +353,10 @@ $ ./gradlew run
 두 번째는 컨슈머가 제외되는 상황
 
 리밸런싱은 컨슈머가 데이터를 처리하는 도중에 언제든지 발생할 수 있으므로 데이터 처리 중 발생한 리밸런싱에 대응하는 코드 작성 필요
+
+[.text-center]
+.컨슈머 장애 발생시 리밸런싱 발생
+image:imgs/3.4.2-6 rebalance when consumer fault.svg[Static, 800]
 
 가용성을 높이면서도 안정적인 운영을 도와주는 리밸런싱은 유용하지만 자주 일어나서는 안됨 +
 리밸런싱이 발생할 때 파티션 소유권을 컨슈머로 재할당하는 과정에서 해당 컨슈머 그룹의 컨슈머들이 토픽의 데이터를 읽을 수 없기 때문
@@ -389,6 +368,10 @@ $ ./gradlew run
 특정 토픽의 파티션을 어떤 컨슈머 그룹이 몇 번째까지 가져갔는지 브로커 내부에서 사용되는 내부 토픽(__consumer_offset)에 기록 +
 컨슈머 동작 이슈가 발생하여 __consumer_offsets 토픽에 어느 레코드까지 읽어갔는지 오프셋 커밋이 기록되지 못했다면 데이터 처리의 중복이 발생 가능 +
 그러므로 데이터 처리의 중복이 발생하지 않게 하기 위해서는 컨슈머 애플리케이션이 오프셋 커밋을 정상적으로 처리했는지 검증 해야함
+
+[.text-center]
+.컨슈머는 처리 완료한 레코드의 오프셋을 커밋한다
+image:imgs/3.4.2-7 offset commit.svg[Static, 600]
 
 오프셋 커밋은 컨슈머 애플리케이션에서 명시적, 비명시적으로 수행 가능
 
@@ -406,6 +389,10 @@ commitSync() 메서드는 브로커에 커밋 요청을 하고 커밋이 정상�
 데이터 처리 시간에 비해 커밋 요청 및 응답에 시간이 오래 걸린다면 동일 시간당 데이터 처리량이 감소하기 때문 +
 이를 해결하기 위해 commitAsync() 메서드를 사용하여 커밋 요청을 전송하고 응답이 오기 전까지 데이터 처리를 수행 가능 +
 하지만 비동기 커밋은 커밋 요청이 실패했을 경우 현재 처리 중인 데이터의 순서를 보장하지 않으며 데이터의 중복 처리가 발생할 수 있다.
+
+[.text-center]
+.컨슈머 내부 구조
+image:imgs/3.4.2-8 consumer architecture.svg[Static, 800]
 
 컨슈머의 내부 구조 +
 컨슈머는 poll() 메서드를 통해 레코드들을 반환받지만 poll() 메서드를 호출하는 시점에 클러스터에서 데이터를 가져오는 것이 아님 +
@@ -524,7 +511,7 @@ while (true) {
 
     for (ConsumerRecord<String, String> record: records) {
         logger.info("{}", record);
-        // 3. 처리를 완료한 레코드의 정보를 토대로 Map<TopicPartition, OffsetAndMetadata> 인스턴스에 키/값 설정
+        // 3. 처리 완료 레코드 정보로 Map<TopicPartition, OffsetAndMetadata> 인스턴스에 키/값 설정
         // 주의할 점은 현재 처리한 오프셋에 1을 더한 값을 커밋해야 하는 점
         // 컨슈머가 poll()을 수행할 때 마지막으로 커밋한 오프셋부터 레코드를 리턴하기 때문
         currentOffset.put(
@@ -627,7 +614,8 @@ public static void main(String[] args) {
     configs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
     consumer = new KafkaConsumer<>(configs);
-    // 2. ConsumerRebalanceListener 인터페이스를 구현한 RebalanceListener를 subscribe() 메서드의 오버라이드 변수로 포함
+    // 2. ConsumerRebalanceListener 인터페이스를 구현한 RebalanceListener를
+    // subscribe() 메서드의 오버라이드 변수로 포함
     consumer.subscribe(Arrays.asList(TOPIC_NAME), new RebalanceListener());
 
     while (true) {
@@ -635,7 +623,7 @@ public static void main(String[] args) {
 
         for (ConsumerRecord<String, String> record: records) {
             logger.info("{}", record);
-            // 3. 레코드의 데이터 처리가 끝나면 레코드가 속한 토픽, 파티션, 오프셋에 관한 정보를 HashMap에 담음
+            // 3. 레코드의 데이터 처리가 끝나면 레코드가 속한 토픽, 파티션, 오프셋 정보를 HashMap에 담음
             // 이 HashMap 값은 오프셋 지정 커밋 시에 사용
             // 주의할 점은 offset + 1 값을 넣어야 한다는 점
             // 컨슈머 재시작 시에 파티션에서 가장 마지막으로 커밋된 오프셋부터 레코드를 읽기 시작하기 때문
